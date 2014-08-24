@@ -1,9 +1,93 @@
 ---
-title: "machine learning project"
-author: "Joseph Mann"
+title: "Machine Learning Project"
+author: ""
 date: "August 20, 2014"
 output: html_document
 ---
+## Abstract
 
-This is a first commit.
-couldn't sync or push branch...
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, we use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+
+## Data Preparation
+
+Load libraries.
+```{r}
+packages <- c("caret", "doMC","knitr")
+sapply(packages, require, character.only=TRUE, quietly=TRUE, warn.conflicts=F)
+```
+
+Load data, and remove divide by zero error strings.
+```{r}
+read.pml <- function(x) { read.csv(x, na.strings = c("", "NA", "#DIV/0!") ) }
+testing = read.pml("pml-testing.csv")
+training = read.pml("pml-training.csv")
+dim(testing)
+dim(training)
+```
+
+Remove variables containing NA values.
+```{r}
+## remove columns with non-numeric values
+cleanVars = function( df) {
+  df[,!sapply(df, anyNA)]
+}
+clean.train = cleanVars(training)
+clean.test = cleanVars(testing)
+dim(clean.train)
+dim(clean.test)
+```
+
+Remove non-quantitave variables and replace the `classe` variable with a factor 
+variable.
+```{r}
+remove = c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", 
+           "cvtd_timestamp", "new_window", "num_window")
+
+drop.columns <- function(df) {
+    df[, ! names(df) %in% remove]
+}
+
+num.train = drop.columns(clean.train)
+num.test = drop.columns(clean.test)
+
+num.train$classe = factor(num.train$classe) 
+set.seed(123)
+```
+
+## Generate Model
+
+Using a multiple core library for faster computation and the default model from the 
+`caret` package, we generate a random forest model. In order to validate our model
+we also create training and validation
+sets. As a random forest always produces its own validation set (about 1/3 the total set), we don't believe that cross-validation is strictly necessary.
+
+```{r  cache=TRUE}
+registerDoMC(cores = 6)
+in.train <- createDataPartition(num.train$classe, p=.80, list=FALSE)
+model.rf <- train(classe ~. , data=num.train[in.train,], tuneGrid=data.frame(mtry=27)) 
+
+```
+
+## Validate Model
+
+Here we evaluate our accuracy by creating a confusion matrix with the predicted
+result and the actual result from a validation set. 
+In the confusion matrix, which uses our own validation set, we see a 99.5 accuracy with a with a 95% confidence interval of $(0.991,0.996)$. The `model.rf` reports an accuracy
+of 1 with a standard of 0.002! The kappa statistic is more conservative
+with a value of 0.992.
+
+```{r}
+prediction = predict(model.rf,num.train[-in.train,])
+cf = confusionMatrix(prediction, num.train[-in.train, "classe"])
+cf
+model.rf
+```
+
+## Generate Test Prediction
+
+Finally, we produce the predicted response to the test set that is asked for in the assignment.
+```{r}
+predict(model.rf, num.test)
+```
+
